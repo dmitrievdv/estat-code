@@ -26,6 +26,16 @@ function initgrid1d(N :: Int, box_size)
     return x_g
 end
 
+function initgrid2d(N :: Int, box_size)
+    x_g = zeros(N, N, 2)
+    Δx_g = 2*box_size/(N-1)
+    for i = 1:N, j=1:N
+        x_g[i, j, 1] = -box_size + (i-1) * Δx_g
+        x_g[i, j, 2] = -box_size + (j-1) * Δx_g
+    end
+    return x_g
+end
+
 function accumulatechargeanddipole1d!(q_g :: Array{Float64, 1}, D_g :: Array{Float64, 1}, x_g :: Array{Float64, 1}, 
                                         q_i :: Array{Float64, 1}, x_i :: Array{Float64, 1})
     n_particles = length(q_i) 
@@ -47,8 +57,38 @@ function accumulatechargeanddipole1d!(q_g :: Array{Float64, 1}, D_g :: Array{Flo
     D_g[1] += D_g[N]; D_g[N] = D_g[1]
 end
 
+function accumulatechargeanddipole2d!(q_g :: Array{Float64, 2}, D_g :: Array{Float64, 2}, x_g :: Array{Float64, 3}, 
+                                        q_i :: Array{Float64, 1}, x_i :: Array{Float64, 2})
+    n_particles = length(q_i) 
+    N = size(ρ_g)[1]
+    Δx_g = x_g[1,2,1] - x_g[1,1,1]
+    grid_size = Δx_g*(N-1)/2
+    q_g .= 0.0; D_g .= 0.0
+    for i = 1:n_particles
+        m_x = Int(floor(2*(x_i[1,i]+1.0)/Δx_g))
+        m_x = ((m+1)÷2) + 1
+
+        m_y = Int(floor(2*(x_i[2,i]+1.0)/Δx_g))
+        m_y = ((m+1)÷2) + 1
+
+        x_g = -grid_size + (m-1)*Δx_g
+        q_g[m_x, m_y] += q_i[i]
+        D_g[m_x, m_y] += q_i[i]*(x_i[i] - x_g)   
+    end
+    q_g[1,:] = q_g[1,:] .+ q_g[N,:]; q_g[N,:] .= q_g[1,:]
+    q_g[:,1] = q_g[:,1] .+ q_g[:,N]; q_g[:,N] .= q_g[:,1]
+
+    D_g[1,:] = D_g[1,:] .+ D_g[N,:]; D_g[N,:] .= D_g[1,:]
+    D_g[:,1] = D_g[:,1] .+ D_g[:,N]; D_g[:,N] .= D_g[:,1]
+end
+
 function gausscore1d(Δx, σ)
     return exp(-0.5*(Δx/σ)^2)/√(2π)/σ
+end
+
+function gausscore2d(Δx :: Vector{Float64}, σ)
+    Δx² = sum(Δx .^ 2)
+    return exp(-0.5*Δx²/(σ)^2)/√(2π)/σ
 end
 
 function griddensity1d!(ρ_g :: Array{Float64, 1}, x_g :: Array{Float64, 1}, q_g :: Array{Float64, 1}, D_g :: Array{Float64, 1}, σ :: Real)
