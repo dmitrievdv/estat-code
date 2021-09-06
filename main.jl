@@ -234,7 +234,7 @@ function poissonequation2d(n_p :: Int, N :: Int, box_size, σ)
 
     # ρ_plot = plot()
 
-    accumulatechargeanddipole2d!(q_g, D_g, x_g, q_i, x_i) # accumulation of charge and dipole moment on the grid
+    print("charges accumulation: "); @time accumulatechargeanddipole2d!(q_g, D_g, x_g, q_i, x_i) # accumulation of charge and dipole moment on the grid
     
     
     # griddensity2d!(ρ_g, x_g, q_g, D_g, σ) # calculation of density on grid (don't need this if you trust in FFT)
@@ -244,6 +244,7 @@ function poissonequation2d(n_p :: Int, N :: Int, box_size, σ)
     # # ρ_plot = plot(x_g, ρ_g, label = L"\rho_g") # uncomment this and the line above (griddensity1d...) if you don't trust in FFT
 
     # ----- calculation of ρ_g using FFT ---------
+    print("solving equation: "); @time begin
     q_fft = fft(q_g)
     D_x_fft = fft(D_g[:,:,1])
     D_y_fft = fft(D_g[:,:,2])
@@ -251,13 +252,22 @@ function poissonequation2d(n_p :: Int, N :: Int, box_size, σ)
     k_y = fftfreq(N, N/(2*box_size))
     # S_fft_th = @. exp(-(2π^2*σ^2*k^2))/(2*box_size/N)^2
     ρ_fft_3 = zeros(ComplexF64,N,N)
-    E_fft = zeros(ComplexF64,N,N)
+    S_fft = zeros(ComplexF64,N,N)
     ϕ_fft = zeros(ComplexF64,N,N)
     for i = 1:N, j=1:N
-        S_k = exp(-(2π^2*σ^2*(k_x[i]^2 + k_y[j]^2)))/(2*box_size/N)^2
+        S_k = exp(-(2π^2*σ^2*(k_x[i]^2 + k_y[j]^2)))/(2*box_size/N)^2 + 0.0im
+        S_fft[i,j] = S_k
         ρ_fft_3[i,j] = S_k*(q_fft[i,j] + D_x_fft[i,j]*(1.0im * k_x[i] * 2π) + D_y_fft[i,j]*(1.0im * k_y[j] * 2π))
         ϕ_fft[i,j] = @. 4π/((k_x[i]^2 + k_y[j]^2) * (2π)^2) * ρ_fft_3[i,j] 
     end
+    
+
+    # xs = x_g[1,:,1]
+    # ys = x_g[2,1,:]
+    # S_plot = heatmap(ys, xs, S_g_fft, aspect_ratio = :equal)
+
+    
+
     ϕ_fft[1,1] = 0.0 + 0.0im
     # ρ_fft_3 = @. S_fft_th*(q_fft + D_fft*(1.0im * k * 2π))
     ρ_g_3 = real.(ifft(ρ_fft_3))
@@ -265,10 +275,21 @@ function poissonequation2d(n_p :: Int, N :: Int, box_size, σ)
 
     # --- solving poisson equation ---------------------------------
     ϕ_g = real.(ifft(ϕ_fft))
+    end
+
+    # S_g_fft = abs.(fftshift(ifft(S_fft)))
+    # S_g = zeros(N,N)
+    # for i = 1:N, j = 1:N
+    #     S_g[i,j] = gausscore2d(x_g[:,i,j], σ)
+    # end
+
+    # S_plot = plot(x_g[1,:,N÷2], S_g[:,N÷2])
+    # plot!(S_plot, x_g[1,:,N÷2], S_g_fft[:,N÷2])
+    # println(sum(abs.(S_g .- S_g_fft))/N^2)
     # ϕ_plot = plot(x_g, ϕ_g, label = L"\phi_g")
     # --------------------------------------------------------------
 
-    
+    print("output: "); @time begin
     out = open("2dgrid.dat", "w")
 
     for i=1:N
@@ -287,22 +308,25 @@ function poissonequation2d(n_p :: Int, N :: Int, box_size, σ)
     end
 
     close(out)
-
-    # xs = x_g[1,:,1]
-    # ys = x_g[2,1,:]
-    # ρ_plot = heatmap(ys, xs, ρ_g_3, aspect_ratio = :equal)
-    # ϕ_plot = heatmap(ys, xs, ϕ_g, aspect_ratio = :equal)
-    # positives = q_i .> 0.0
-    # negatives = q_i .< 0.0
-    # scatter!(ρ_plot, x_i[2,positives], x_i[1,positives], mc = :red)
-    # scatter!(ρ_plot, x_i[2,negatives], x_i[1,negatives], mc = :blue)
-    # scatter!(ϕ_plot, x_i[2,positives], x_i[1,positives], mc = :red)
-    # scatter!(ϕ_plot, x_i[2,negatives], x_i[1,negatives], mc = :blue)
+    end
+    print("plotting: "); @time begin
+    xs = x_g[1,:,1]
+    ys = x_g[2,1,:]
+    ρ_plot = heatmap(ys, xs, ρ_g_3, aspect_ratio = :equal)
+    ϕ_plot = heatmap(ys, xs, ϕ_g, aspect_ratio = :equal)
+    positives = q_i .> 0.0
+    negatives = q_i .< 0.0
+    end
+    # scatter!(ρ_plot, x_i[2,positives], x_i[1,positives], mc = :red, ms = 2)
+    # scatter!(ρ_plot, x_i[2,negatives], x_i[1,negatives], mc = :blue, ms = 2)
+    # scatter!(ϕ_plot, x_i[2,positives], x_i[1,positives], mc = :red, ms = 2)
+    # scatter!(ϕ_plot, x_i[2,negatives], x_i[1,negatives], mc = :blue, ms = 2)
 
     # return ρ_g, ϕ_g
 
-    # plot(ρ_plot, ϕ_plot, layout = @layout([A B]), size = (1000, 500), dpi = 100)
+    plot(ρ_plot, ϕ_plot, layout = @layout([A B]), size = (1000, 500), dpi = 100)
 
+    # S_plot
     # # --- finding E field or force on particle ---------------------
     # E_fft = @. -1.0im * ρ_fft_3 / (k * 2π) #* S_fft_th 
     # E_fft[1] = 0.0# -1.0im * ρ_fft_3[1] / (eps(0.0)* 2π) #* S_fft_th[1] --- don't need this k
@@ -326,6 +350,19 @@ function poissonequation2d(n_p :: Int, N :: Int, box_size, σ)
     # plot(ρ_plot, ϕ_plot, E_plot, layout = @layout([A B C]), size = (1500, 500), dpi = 100, xlims = (-1.0, 1.0))
 end
 
-@time poissonequation2d(10^5,500,1.0,0.01)
+function kinetic2d(n_p :: Int, N :: Int, box_size, σ; μ = 5.45e-4)
+    n = 2n_p # must be even
+ 
+    x_i = 2*box_size*rand(2,n) .- box_size # n random particles in the box
+    q_i = [ones(n_p); -ones(n_p)] # half have charge +1 and half -- -1
+    m_i = [fill(1.0, n_p), fill(μ, n_p)] # masses
+
+    x_g = initgrid2d(N, box_size) # grid creation
+    ρ_g = zeros(N,N); q_g = zeros(N,N); D_g = zeros(N,N,2)
+    E_g = zeros(N,N,2)
+end
+
+@time poissonequation2d(10^3,100,1.0,0.05)
 
 # @time poissonequation1d(1000, 1000, 1.0, 0.01)
+
